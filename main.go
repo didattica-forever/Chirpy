@@ -1,23 +1,28 @@
 package main
 
 import (
-	//"fmt"
+	// "fmt"
 	"log"
 	"net/http"
+	"sync/atomic"
 )
 
-// Readiness endpoints are commonly used by external systems
-// to check if our server is ready to receive traffic.
-func readinessHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(200)
-	w.Write([]byte("OK"))
+type apiConfig struct {
+	fileserverHits atomic.Int32
 }
 
+
+
 func main() {
+
+	apiCfg := apiConfig{}
+	//apiCfg.fileserverHits.Store(0)
+
 	// 1. Create a new http.ServeMux and register a handler
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", readinessHandler)
+	mux.HandleFunc("GET /api/healthz", readinessHandler)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.statsHandler)
+	mux.HandleFunc("POST /admin/reset", apiCfg.resetStatsHandler)
 
 	// 2. Create a new http.Server struct and assign the mux as its handler
 	server := &http.Server{
@@ -31,7 +36,7 @@ func main() {
 
 	// Use the mux's .Handle() method to add a handler for the root path
 	// Strip the /app prefix from the request path before passing it to the fileserver handler
-	mux.Handle("/app/", http.StripPrefix("/app", fileServer))
+	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", fileServer)))
 
 	// Also handle the no-trailing-slash case so /app serves index (or redirects):
 	// Redirect /app ==> /app/
