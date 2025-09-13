@@ -11,8 +11,6 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 }
 
-
-
 func main() {
 
 	apiCfg := apiConfig{}
@@ -21,6 +19,7 @@ func main() {
 	// 1. Create a new http.ServeMux and register a handler
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", readinessHandler)
+	mux.HandleFunc("POST /api/validate_chirp", handlerChirpsValidate)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.statsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetStatsHandler)
 
