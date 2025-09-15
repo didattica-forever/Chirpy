@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
-
 	"os"
 	"sync/atomic"
 
@@ -19,6 +18,7 @@ import (
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	db             *database.Queries
+	platform       string
 }
 
 func main() {
@@ -37,15 +37,23 @@ func main() {
 	}
 	dbQueries := database.New(dbConn)
 
+	platform := os.Getenv("PLATFORM")
+	if platform == "" {
+		log.Fatal("PLATFORM must be set")
+	}
+
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
 		db:             dbQueries,
+		platform:       platform,
 	}
 
 	// 1. Create a new http.ServeMux and register a handler
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", readinessHandler)
-	mux.HandleFunc("POST /api/validate_chirp", handlerChirpsValidate)
+	mux.HandleFunc("POST /api/chirps", apiCfg.chirpHandler)
+	mux.HandleFunc("POST /api/users", apiCfg.createUserHandler)
+
 	mux.HandleFunc("GET /admin/metrics", apiCfg.statsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetStatsHandler)
 
