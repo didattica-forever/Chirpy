@@ -11,3 +11,13 @@ RETURNING *;
 
 -- name: DeleteAllChirps :exec
 DELETE FROM chirps;
+
+-- name: GetAllChirps :many
+select id, created_at, updated_at, body, user_id
+from chirps
+order by created_at;
+
+-- name: GetChirp :one
+select id, created_at, updated_at, body, user_id
+from chirps
+where id = $1;

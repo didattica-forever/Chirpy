@@ -8,11 +8,20 @@ import (
 	"net/http"
 	"time"
 
+	"Chirpy/internal/auth"
+	"Chirpy/internal/database"
 	"github.com/google/uuid"
 )
 
 type CreateUserRequest struct {
-	Email string `json:"email"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+}
+
+type LoginUserRequest struct {
+	Password         string `json:"password"`
+	Email            string `json:"email"`
+	ExpiresInSeconds int    `json:"expires_in_seconds"`
 }
 
 type CreateUserResponse struct {
@@ -20,6 +29,14 @@ type CreateUserResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+}
+
+type LoginUserResponse struct {
+	Id        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+	Token     string    `json:"token"`
 }
 
 func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +63,22 @@ func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	user, err := cfg.db.CreateUser(context.Background(), req.Email)
+	if req.Password == "" {
+		respondWithError(w, http.StatusBadRequest, "Password is required", err)
+		return
+	}
+
+	hashed_password, err := auth.HashPassword(req.Password)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error in password hashing", err)
+		return
+	}
+	params := database.CreateUserParams{
+		Email:          req.Email,
+		HashedPassword: hashed_password,
+	}
+
+	user, err := cfg.db.CreateUser(context.Background(), params)
 	if err != nil {
 		respondWithError(w, http.StatusConflict, "INSERT error", err)
 		return
@@ -60,4 +92,65 @@ func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) 
 		Email:     user.Email,
 	})
 	//respondWithJSON(w, http.StatusCreated, user)
+}
+
+func (cfg *apiConfig) loginUserHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		respondWithError(w, http.StatusMethodNotAllowed, "Only POST method is allowed", nil)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Failed to read request body", err)
+		return
+	}
+
+	req := LoginUserRequest{}
+	if err := json.Unmarshal(body, &req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid JSON format", err)
+		return
+	}
+
+	if req.Email == "" {
+		respondWithError(w, http.StatusBadRequest, "Email is required", err)
+		return
+	}
+
+	if req.Password == "" {
+		respondWithError(w, http.StatusBadRequest, "Password is required", err)
+		return
+	}
+
+	user, err := cfg.db.FindUserByEmail(context.Background(), req.Email)
+	if err != nil {
+		respondWithError(w, http.StatusConflict, "INSERT error", err)
+		return
+	}
+
+	login_timeout := 1
+
+	if req.ExpiresInSeconds != 0 {
+		login_timeout = req.ExpiresInSeconds
+	}	
+	
+	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Duration(login_timeout)*time.Hour)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Error in token creation", err)
+		return
+	}
+
+	if err := auth.CheckPasswordHash(req.Password, user.HashedPassword); err == nil {
+		respondWithJSON(w, http.StatusOK, LoginUserResponse{
+			Id:        user.ID,
+			CreatedAt: user.CreatedAt.Time,
+			UpdatedAt: user.UpdatedAt.Time,
+			Email:     user.Email,
+			Token:     token,
+		})
+	} else {
+		respondWithError(w, http.StatusUnauthorized, "Invalid password", err)
+		return
+	}
+	
 }
