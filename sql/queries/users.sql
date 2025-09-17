@@ -32,3 +32,10 @@ RETURNING *;
 SELECT *
 FROM users
 WHERE id = $1;
+
+-- name: UpgradeToChirpyRed :one
+update users
+SET is_chirpy_red = true,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;
