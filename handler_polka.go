@@ -1,6 +1,7 @@
 package main
 
 import (
+	"Chirpy/internal/auth"
 	"encoding/json"
 	"net/http"
 
@@ -20,6 +21,17 @@ func (cfg *apiConfig) handlerPolka(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
+		return
+	}
+
+	polkaKey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't find API key", err)
+		return
+	}
+	
+	if polkaKey != cfg.polkaKey {
+		respondWithError(w, http.StatusUnauthorized, "Invalid API key", err)
 		return
 	}
 

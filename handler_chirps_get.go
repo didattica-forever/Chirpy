@@ -1,6 +1,8 @@
 package main
 
 import (
+	"Chirpy/internal/database"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -30,22 +32,59 @@ func (cfg *apiConfig) handlerChirpsGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerChirpsRetrieve(w http.ResponseWriter, r *http.Request) {
-	dbChirps, err := cfg.db.GetChirps(r.Context())
+
+	authId := r.URL.Query().Get("author_id")
+
+	sType := r.URL.Query().Get("sort")
+	if sType != "asc" && sType != "desc" {
+		sType = "asc"
+	}
+	
+	fmt.Printf("==>> sType: [%s]\n", sType)
+
+	var dbChirps []database.Chirp
+	var err error
+
+	if authId != "" {
+		authorId := uuid.MustParse(authId)
+		dbChirps, err = cfg.db.GetChirpsByAuthor(r.Context(), authorId)
+	} else {
+		dbChirps, err = cfg.db.GetChirps(r.Context())
+	}
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps", err)
 		return
-	}
+	}	
 
 	chirps := []Chirp{}
 	for _, dbChirp := range dbChirps {
-		chirps = append(chirps, Chirp{
-			ID:        dbChirp.ID,
-			CreatedAt: dbChirp.CreatedAt,
-			UpdatedAt: dbChirp.UpdatedAt,
-			UserID:    dbChirp.UserID,
-			Body:      dbChirp.Body,
-		})
+		if sType == "desc" {
+			chirps = append([]Chirp{{
+				ID:        dbChirp.ID,
+				CreatedAt: dbChirp.CreatedAt,
+				UpdatedAt: dbChirp.UpdatedAt,
+				UserID:    dbChirp.UserID,
+				Body:      dbChirp.Body,
+			}}, chirps...)
+		} else {
+			chirps = append(chirps, Chirp{
+				ID:        dbChirp.ID,
+				CreatedAt: dbChirp.CreatedAt,
+				UpdatedAt: dbChirp.UpdatedAt,
+				UserID:    dbChirp.UserID,
+				Body:      dbChirp.Body,
+			})
+		}
+	
+		// chirps = append(chirps, Chirp{
+		// 	ID:        dbChirp.ID,
+		// 	CreatedAt: dbChirp.CreatedAt,
+		// 	UpdatedAt: dbChirp.UpdatedAt,
+		// 	UserID:    dbChirp.UserID,
+		// 	Body:      dbChirp.Body,
+		// })
 	}
 
 	respondWithJSON(w, http.StatusOK, chirps)
 }
+
