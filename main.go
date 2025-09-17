@@ -1,25 +1,23 @@
 package main
 
 import (
-	// "fmt"
-
 	"database/sql"
 	"log"
 	"net/http"
 	"os"
 	"sync/atomic"
 
+	"Chirpy/internal/database"
+
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
-
-	"Chirpy/internal/database"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	db             *database.Queries
 	platform       string
-	secret         string
+	jwtSecret      string
 }
 
 func main() {
@@ -31,6 +29,14 @@ func main() {
 	if dbURL == "" {
 		log.Fatal("DB_URL must be set")
 	}
+	platform := os.Getenv("PLATFORM")
+	if platform == "" {
+		log.Fatal("PLATFORM must be set")
+	}
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET environment variable is not set")
+	}
 
 	dbConn, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -38,58 +44,39 @@ func main() {
 	}
 	dbQueries := database.New(dbConn)
 
-	platform := os.Getenv("PLATFORM")
-	if platform == "" {
-		log.Fatal("PLATFORM must be set")
-	}
-
-	secret := os.Getenv("SECRET")
-	if secret == "" {
-		log.Fatal("SECRET must be set")
-	}
-
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
 		db:             dbQueries,
 		platform:       platform,
-		secret:         secret,
+		jwtSecret:      jwtSecret,
 	}
 
-	// 1. Create a new http.ServeMux and register a handler
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/healthz", readinessHandler)
-	mux.HandleFunc("GET /api/chirps", apiCfg.chirpListHandler)
-	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.chirpGetHandler)
-	mux.HandleFunc("POST /api/chirps", apiCfg.chirpHandler)
-	mux.HandleFunc("POST /api/users", apiCfg.createUserHandler)
-	mux.HandleFunc("POST /api/login", apiCfg.loginUserHandler)
+	fsHandler := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot))))
+	mux.Handle("/app/", fsHandler)
 
-	mux.HandleFunc("GET /admin/metrics", apiCfg.statsHandler)
-	mux.HandleFunc("POST /admin/reset", apiCfg.resetStatsHandler)
+	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 
-	// 2. Create a new http.Server struct and assign the mux as its handler
-	server := &http.Server{
+	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+	mux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
+	mux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
+
+	mux.HandleFunc("POST /api/users", apiCfg.handlerUsersCreate)
+	mux.HandleFunc("PUT /api/users", apiCfg.handlerUsersUpdate)
+
+	mux.HandleFunc("POST /api/chirps", apiCfg.handlerChirpsCreate)
+	mux.HandleFunc("GET /api/chirps", apiCfg.handlerChirpsRetrieve)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerChirpsGet)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.handlerChirpsDelete)
+
+	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
+
+	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: mux,
 	}
 
-	// Use the http.FileServer to serve files from the current directory
-	//fileServer := http.FileServer(http.Dir("."))
-	fileServer := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot))))
-
-	// Use the mux's .Handle() method to add a handler for the root path
-	// Strip the /app prefix from the request path before passing it to the fileserver handler
-	mux.Handle("/app/", fileServer)
-
-	// Also handle the no-trailing-slash case so /app serves index (or redirects):
-	// Redirect /app ==> /app/
-	mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/app/", http.StatusMovedPermanently)
-	})
-
-	// 3. Use the server's ListenAndServe method
-	log.Println("Server starting on :8080")
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
-	}
+	log.Printf("Serving on port: %s\n", port)
+	log.Fatal(srv.ListenAndServe())
 }

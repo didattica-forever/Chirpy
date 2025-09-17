@@ -1,13 +1,8 @@
 package main
 
-import (
-	"context"
-	"net/http"
-)
+import "net/http"
 
-// to display the number of hits
-func (cfg *apiConfig) resetStatsHandler(w http.ResponseWriter, r *http.Request) {
-
+func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	if cfg.platform != "dev" {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("Reset is only allowed in dev environment."))
@@ -15,16 +10,12 @@ func (cfg *apiConfig) resetStatsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	cfg.fileserverHits.Store(0)
-
-	err := cfg.db.DeleteAllUsers(context.Background())
+	err := cfg.db.Reset(r.Context())
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to reset the database: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to reset the database: " + err.Error()))
 		return
 	}
-
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-
 	w.Write([]byte("Hits reset to 0 and database reset to initial state."))
-
 }

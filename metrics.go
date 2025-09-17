@@ -7,19 +7,19 @@ import (
 )
 
 // to display the number of hits
-func (cfg *apiConfig) statsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/html; charset=utf-8")
+func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	htmlStr := `
-	<html>
-		<body>
-			<h1>Welcome, Chirpy Admin</h1>
-			<p>Chirpy has been visited %d times!</p>
-		</body>
-	</html>`
-	// str := fmt.Sprintf("Hits: %v", cfg.fileserverHits.Load())
-	str := fmt.Sprintf(htmlStr, cfg.fileserverHits.Load())
-	w.Write([]byte(str))
+	w.Write([]byte(fmt.Sprintf(`
+<html>
+
+<body>
+	<h1>Welcome, Chirpy Admin</h1>
+	<p>Chirpy has been visited %d times!</p>
+</body>
+
+</html>
+	`, cfg.fileserverHits.Load())))
 }
 
 // Middleware function (High Order Function) to count access to servers API

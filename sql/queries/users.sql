@@ -14,9 +14,21 @@ VALUES (
         $2
     )
 RETURNING *;
--- name: DeleteAllUsers :exec
-DELETE FROM users;
--- name: FindUserByEmail :one
-select *
-from users
-where email = $1;
+
+-- name: GetUserByEmail :one
+SELECT *
+FROM users
+WHERE email = $1;
+
+-- name: UpdateUser :one
+update users
+SET updated_at = NOW(),
+    email = $1,
+    hashed_password = $2
+where id = $3
+RETURNING *;
+
+-- name: GetUserById :one
+SELECT *
+FROM users
+WHERE id = $1;

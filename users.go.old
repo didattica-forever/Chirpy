@@ -10,6 +10,7 @@ import (
 
 	"Chirpy/internal/auth"
 	"Chirpy/internal/database"
+
 	"github.com/google/uuid"
 )
 
@@ -19,9 +20,9 @@ type CreateUserRequest struct {
 }
 
 type LoginUserRequest struct {
-	Password         string `json:"password"`
-	Email            string `json:"email"`
-	ExpiresInSeconds int    `json:"expires_in_seconds"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+	// ExpiresInSeconds int    `json:"expires_in_seconds"`
 }
 
 type CreateUserResponse struct {
@@ -32,11 +33,12 @@ type CreateUserResponse struct {
 }
 
 type LoginUserResponse struct {
-	Id        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	Token     string    `json:"token"`
+	Id           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	Token        string    `json:"token"`
+	RefreshToken string    `json:"refersh_token"`
 }
 
 func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +95,7 @@ func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) 
 	})
 	//respondWithJSON(w, http.StatusCreated, user)
 }
-
+/*
 func (cfg *apiConfig) loginUserHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		respondWithError(w, http.StatusMethodNotAllowed, "Only POST method is allowed", nil)
@@ -130,27 +132,48 @@ func (cfg *apiConfig) loginUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	login_timeout := 1
 
-	if req.ExpiresInSeconds != 0 {
-		login_timeout = req.ExpiresInSeconds
-	}	
-	
+	// if req.ExpiresInSeconds != 0 {
+	// 	login_timeout = req.ExpiresInSeconds
+	// }
+
 	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Duration(login_timeout)*time.Hour)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Error in token creation", err)
 		return
 	}
 
-	if err := auth.CheckPasswordHash(req.Password, user.HashedPassword); err == nil {
-		respondWithJSON(w, http.StatusOK, LoginUserResponse{
-			Id:        user.ID,
-			CreatedAt: user.CreatedAt.Time,
-			UpdatedAt: user.UpdatedAt.Time,
-			Email:     user.Email,
-			Token:     token,
-		})
-	} else {
-		respondWithError(w, http.StatusUnauthorized, "Invalid password", err)
+	refresh_token, err := auth.MakeRefreshToken()
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Error in refresh token creation", err)
 		return
 	}
-	
+
+	rtDB := database.CreateRefreshTokenParams{
+		Token:     refresh_token,
+		UserID:    user.ID,
+		ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
+		// RevokedAt: sql.NullTime,
+	}
+
+	refresh_token_db, err := cfg.db.CreateRefreshToken(context.Background(), rtDB)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Refresh Token INSERT error", err)
+		return
+	}
+
+	if err := auth.CheckPasswordHash(req.Password, user.HashedPassword); err == nil {
+		respondWithJSON(w, http.StatusOK, LoginUserResponse{
+			Id:           user.ID,
+			CreatedAt:    user.CreatedAt.Time,
+			UpdatedAt:    user.UpdatedAt.Time,
+			Email:        user.Email,
+			Token:        token,
+			RefreshToken: refresh_token_db.Token,
+		})
+	} else {
+		respondWithError(w, http.StatusUnauthorized, "Invalid login credentials", err)
+		return
+	}
+
 }
+*/
